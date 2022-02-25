@@ -54,29 +54,52 @@ bool transactional_lock_enabled()
 TRANSACTIONAL_TARGET
 bool xtest() { return have_transactional_memory && _xtest(); }
 # endif
-#elif defined __powerpc64__
-# ifdef __linux__
-#  include <sys/auxv.h>
-
-#  ifndef PPC_FEATURE2_HTM_NOSC
-#   define PPC_FEATURE2_HTM_NOSC 0x01000000
-#  endif
-#  ifndef PPC_FEATURE2_HTM_NO_SUSPEND
-#   define PPC_FEATURE2_HTM_NO_SUSPEND 0x00080000
-#  endif
-
-#  ifndef AT_HWCAP2
-#   define AT_HWCAP2 26
-#  endif
+#elif defined __powerpc64__ || defined __s390__
+# include <setjmp.h>
+# include <signal.h>
+# ifdef __s390__
+#  include <htmxlintrin.h>
 # endif
 bool have_transactional_memory;
+static sigjmp_buf ill_jmp;
+static void ill_handler(int sig)
+{
+  siglongjmp(ill_jmp, sig);
+}
 bool transactional_lock_enabled()
 {
-# ifdef __linux__
-  return getauxval(AT_HWCAP2) &
-    (PPC_FEATURE2_HTM_NOSC | PPC_FEATURE2_HTM_NO_SUSPEND);
-# endif
+  bool r= false;
+  sigset_t oset;
+  struct sigaction ill_act, oact_ill;
+
+  memset(&ill_act, 0, sizeof(ill_act));
+  ill_act.sa_handler = ill_handler;
+  sigfillset(&ill_act.sa_mask);
+  sigdelset(&ill_act.sa_mask, SIGILL);
+
+  sigprocmask(SIG_SETMASK, &ill_act.sa_mask, &oset);
+  sigaction(SIGILL, &ill_act, &oact_ill);
+  if (sigsetjmp(ill_jmp, 1) == 0
+      && __TM_simple_begin() == _HTM_TBEGIN_STARTED)
+  {
+    r= true;
+    __TM_end();
+  }
+  sigaction(SIGILL, &oact_ill, NULL);
+  sigprocmask(SIG_SETMASK, &oset, NULL);
+  return r;
 }
+# ifdef __s390__
+TRANSACTIONAL_TARGET bool xbegin()
+{
+  return have_transactional_memory &&
+    __TM_simple_begin() == _HTM_TBEGIN_STARTED;
+}
+
+TRANSACTIONAL_TARGET void xabort() { __TM_abort(); }
+
+TRANSACTIONAL_TARGET void xend() { __TM_end(); }
+# endif
 
 # ifdef UNIV_DEBUG
 TRANSACTIONAL_TARGET bool xtest()

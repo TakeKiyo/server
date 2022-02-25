@@ -18,8 +18,8 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 #pragma once
 
-#if defined __powerpc64__ && defined __clang__ && defined __linux__
-#elif defined __powerpc64__&&defined __GNUC__&&defined __linux__&&__GNUC__ > 4
+#if defined __powerpc64__
+#elif defined __s390__
 #elif defined _MSC_VER && (defined _M_IX86 || defined _M_X64) && !defined(__clang__)
 #elif defined __GNUC__ && (defined __i386__ || defined __x86_64__)
 # if __GNUC__ >= 8
@@ -69,7 +69,7 @@ static inline bool xtest() { return have_transactional_memory && _xtest(); }
 TRANSACTIONAL_INLINE static inline void xabort() { _xabort(0); }
 
 TRANSACTIONAL_INLINE static inline void xend() { _xend(); }
-# elif defined __powerpc64__
+# elif defined __powerpc64__ || defined __s390__
 #  include <htmxlintrin.h>
 extern bool have_transactional_memory;
 bool transactional_lock_enabled();
@@ -89,6 +89,28 @@ bool xtest();
 TRANSACTIONAL_INLINE static inline void xabort() { __TM_abort(); }
 
 TRANSACTIONAL_INLINE static inline void xend() { __TM_end(); }
+# elif defined __s390__
+extern bool have_transactional_memory;
+bool transactional_lock_enabled();
+#   define TRANSACTIONAL_TARGET __attribute__((target("htm")))
+#   define TRANSACTIONAL_INLINE __attribute__((target("htm"),always_inline))
+
+/**
+  Per FIXME in s390x's htmxlintrin.h, the __TM_simple_begin
+  isn't always_inline resulting in duplicate definitions.
+  The same applies to this function, we can't inline it
+  because the tbegin builtins are "returns_twice" using
+  setjmp_call_p calls. xabort and xend also need to be
+  moved as we can't define their body without the include
+  file.
+ */
+TRANSACTIONAL_TARGET bool xbegin();
+TRANSACTIONAL_TARGET void xabort();
+TRANSACTIONAL_TARGET void xend();
+#  ifdef UNIV_DEBUG
+bool xtest();
+#  endif
+
 # endif
 #endif
 
