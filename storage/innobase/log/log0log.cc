@@ -773,7 +773,7 @@ void log_write_up_to(lsn_t lsn, bool durable,
 #ifdef HAVE_PMEM
   if (log_sys.is_pmem())
   {
-    ut_ad(!callback);
+    ut_ad(!callback || !callback->m_callback);
     if (durable)
       log_sys.persist(lsn);
     return;
