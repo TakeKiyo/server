@@ -602,13 +602,16 @@ public:
 
 struct Lex_length_and_dec_st
 {
+  /*
+  Does not compile on some platforms:
   static constexpr uint collation_type_bits= 2;
   static_assert(((1<<collation_type_bits)-1) >=
                 Lex_charset_collation_st::TYPE_LAST);
+  */
 protected:
   uint32 m_length;
   uint8  m_dec;
-  uint8  m_collation_type:collation_type_bits;
+  uint8  m_collation_type:2; /*collation_type_bits;*/
   bool   m_has_explicit_length:1;
   bool   m_has_explicit_dec:1;
 public:
