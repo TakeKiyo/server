@@ -69,8 +69,20 @@ static inline bool xtest() { return have_transactional_memory && _xtest(); }
 TRANSACTIONAL_INLINE static inline void xabort() { _xabort(0); }
 
 TRANSACTIONAL_INLINE static inline void xend() { _xend(); }
-# elif defined __powerpc64__ || defined __s390__
-#  include <htmxlintrin.h>
+# elif defined __powerpc64__
+/**
+  Include file htmxlintrin.h can #error without -mhtm compile option on
+  some Linux systems like Debian Sid. We're using TRANSACTIONAL_{TARGET,INLINE}
+  to selectively htm compile bits needing htm, so avoid the #error by faking
+  it.
+*/
+#  ifndef __HTM__
+#   define __HTM__
+#   include <htmxlintrin.h>
+#   undef __HTM__
+#  else
+#   include <htmxlintrin.h>
+#  endif
 extern bool have_transactional_memory;
 bool transactional_lock_enabled();
 #   define TRANSACTIONAL_TARGET __attribute__((target("htm")))
