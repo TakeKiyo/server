@@ -45,8 +45,8 @@ bool transactional_lock_enabled();
 
 #  include <immintrin.h>
 #  if defined __GNUC__ && !defined __INTEL_COMPILER
-#   define TRANSACTIONAL_TARGET __attribute__((target("rtm")))
-#   define TRANSACTIONAL_INLINE __attribute__((target("rtm"),always_inline))
+#   define TRANSACTIONAL_TARGET __attribute__((target("rtm"),hot))
+#   define TRANSACTIONAL_INLINE __attribute__((target("rtm"),hot,always_inline))
 #  else
 #   define TRANSACTIONAL_TARGET /* nothing */
 #   define TRANSACTIONAL_INLINE /* nothing */
@@ -85,8 +85,8 @@ TRANSACTIONAL_INLINE static inline void xend() { _xend(); }
 #  endif
 extern bool have_transactional_memory;
 bool transactional_lock_enabled();
-#   define TRANSACTIONAL_TARGET __attribute__((target("htm")))
-#   define TRANSACTIONAL_INLINE __attribute__((target("htm"),always_inline))
+#   define TRANSACTIONAL_TARGET __attribute__((target("htm"),hot))
+#   define TRANSACTIONAL_INLINE __attribute__((target("htm"),hot,always_inline))
 
 TRANSACTIONAL_INLINE static inline bool xbegin()
 {
@@ -104,8 +104,8 @@ TRANSACTIONAL_INLINE static inline void xend() { __TM_end(); }
 # elif defined __s390__
 extern bool have_transactional_memory;
 bool transactional_lock_enabled();
-#   define TRANSACTIONAL_TARGET __attribute__((target("htm")))
-#   define TRANSACTIONAL_INLINE __attribute__((target("htm"),always_inline))
+#   define TRANSACTIONAL_TARGET __attribute__((target("htm"),hot))
+#   define TRANSACTIONAL_INLINE __attribute__((target("htm"),hot,always_inline))
 
 /**
   Per FIXME in s390x's htmxlintrin.h, the __TM_simple_begin
