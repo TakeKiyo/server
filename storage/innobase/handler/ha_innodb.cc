@@ -7566,6 +7566,13 @@ ha_innobase::innobase_lock_autoinc(void)
 	switch (innobase_autoinc_lock_mode) {
 	case AUTOINC_NO_LOCKING:
 		/* Acquire only the AUTOINC mutex. */
+		if (thd_rpl_stmt_based(m_user_thd)) {
+			push_warning(
+				m_user_thd, Sql_condition::WARN_LEVEL_WARN,
+				ER_BINLOG_STMT_MODE_AND_ROW_ENGINE,
+				"innodb_autoinc_lock_mode=2 is not safe "
+				"with statement based binary log format.");
+		}
 		m_prebuilt->table->autoinc_mutex.lock();
 		break;
 
@@ -9128,6 +9135,14 @@ ha_innobase::change_active_index(
 	build_template(false);
 
 	DBUG_RETURN(0);
+}
+
+/* @return true if it's necessary to switch current statement log format from
+STATEMENT to ROW if binary log format is MIXED and autoincrement values
+are changed in the statement */
+bool ha_innobase::prefer_binlog_format_row() const
+{
+  return innobase_autoinc_lock_mode == AUTOINC_NO_LOCKING;
 }
 
 /***********************************************************************//**
