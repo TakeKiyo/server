@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2007, 2018, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2016, 2021, MariaDB Corporation.
+Copyright (c) 2016, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -252,6 +252,10 @@ static const char* fts_end_delete_sql =
 	"\n"
 	"DELETE FROM $BEING_DELETED;\n"
 	"DELETE FROM $BEING_DELETED_CACHE;\n";
+
+extern "C" int thd_get_backup_lock(THD* thd, MDL_ticket **mdl);
+extern "C" void thd_release_mdl_locks(THD* thd, MDL_ticket *mdl);
+extern bool sst_in_progress;
 
 /**********************************************************************//**
 Initialize fts_zip_t. */
@@ -2780,6 +2784,9 @@ static bool fts_is_sync_needed()
 static void fts_optimize_sync_table(dict_table_t *table,
                                     bool process_message= false)
 {
+#ifdef WITH_WSREP
+  ut_ad(!sst_in_progress);
+#endif
   MDL_ticket* mdl_ticket= nullptr;
   dict_table_t *sync_table= dict_acquire_mdl_shared<true>(table, fts_opt_thd,
                                                           &mdl_ticket);
@@ -2815,6 +2822,7 @@ static void fts_optimize_callback(void *)
 	static ulint	current;
 	static bool	done;
 	static ulint	n_optimize;
+	MDL_ticket*	mdl= NULL;
 
 	if (!fts_optimize_wq || done) {
 		/* Possibly timer initiated callback, can come after FTS_MSG_STOP.*/
@@ -2831,6 +2839,11 @@ static void fts_optimize_callback(void *)
 		    && ib_wqueue_is_empty(fts_optimize_wq)
 		    && n_tables > 0
 		    && n_optimize > 0) {
+			if (thd_get_backup_lock(fts_opt_thd, &mdl)) {
+				timer->set_time(5000, 0);
+				return;
+			}
+
 			fts_slot_t* slot = static_cast<fts_slot_t*>(
 				ib_vector_get(fts_slots, current));
 
@@ -2846,8 +2859,16 @@ static void fts_optimize_callback(void *)
 				current = 0;
 			}
 
+			thd_release_mdl_locks(fts_opt_thd, mdl);
+			mdl = NULL;
 		} else if (n_optimize == 0
 			   || !ib_wqueue_is_empty(fts_optimize_wq)) {
+			if (thd_get_backup_lock(fts_opt_thd, &mdl)) {
+				if (n_tables)
+					timer->set_time(5000, 0);
+				return;
+			}
+
 			fts_msg_t* msg = static_cast<fts_msg_t*>
 				(ib_wqueue_nowait(fts_optimize_wq));
 			/* Timeout ? */
@@ -2857,6 +2878,7 @@ static void fts_optimize_callback(void *)
 				}
 				if (n_tables)
 					timer->set_time(5000, 0);
+				thd_release_mdl_locks(fts_opt_thd, mdl);
 				return;
 			}
 
@@ -2900,6 +2922,8 @@ static void fts_optimize_callback(void *)
 
 			mem_heap_free(msg->heap);
 			n_optimize = done ? 0 : fts_optimize_how_many();
+			thd_release_mdl_locks(fts_opt_thd, mdl);
+			mdl= NULL;
 		}
 	}
 
@@ -2916,6 +2940,7 @@ static void fts_optimize_callback(void *)
 		}
 	}
 
+	thd_release_mdl_locks(fts_opt_thd, NULL);
 	ib_vector_free(fts_slots);
 	mysql_mutex_lock(&fts_optimize_wq->mutex);
 	fts_slots = NULL;
@@ -2941,7 +2966,7 @@ fts_optimize_init(void)
 
 	/* Create FTS optimize work queue */
 	fts_optimize_wq = ib_wqueue_create();
-  ut_a(fts_optimize_wq != NULL);
+	ut_a(fts_optimize_wq != NULL);
 	timer = srv_thread_pool->create_timer(timer_callback);
 
 	/* Create FTS vector to store fts_slot_t */
@@ -3003,6 +3028,7 @@ fts_optimize_shutdown()
 			     &fts_optimize_wq->mutex.m_mutex);
 	}
 
+	thd_release_mdl_locks(fts_opt_thd, NULL);
 	innobase_destroy_background_thd(fts_opt_thd);
 	fts_opt_thd = NULL;
 	pthread_cond_destroy(&fts_opt_shutdown_cond);
