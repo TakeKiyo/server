@@ -1714,6 +1714,7 @@ static void lock_wait_rpl_report(trx_t *trx)
   const lock_t *wait_lock= trx->lock.wait_lock;
   if (!wait_lock)
     return;
+  static_assert(LOCK_AUTO_INC & LOCK_AUTO_INC_X, "compatibility");
   ut_ad(!(wait_lock->type_mode & LOCK_AUTO_INC));
   /* This would likely be too large to attempt to use a memory transaction,
   even for wait_lock->is_table(). */
@@ -1953,12 +1954,16 @@ static void lock_grant(lock_t *lock)
   lock_reset_lock_and_trx_wait(lock);
   trx_t *trx= lock->trx;
   trx->mutex_lock();
-  if (lock->mode() == LOCK_AUTO_INC)
-  {
+  switch (lock->mode()) {
+  default:
+    break;
+  case LOCK_AUTO_INC:
+  case LOCK_AUTO_INC_X:
     dict_table_t *table= lock->un_member.tab_lock.table;
     ut_ad(!table->autoinc_trx);
     table->autoinc_trx= trx;
     ib_vector_push(trx->autoinc_locks, &lock);
+    break;
   }
 
   DBUG_PRINT("ib_lock", ("wait for trx " TRX_ID_FMT " ends", trx->id));
@@ -3216,11 +3221,12 @@ lock_t *lock_table_create(dict_table_t *table, unsigned type_mode, trx_t *trx,
 
 	switch (LOCK_MODE_MASK & type_mode) {
 	case LOCK_AUTO_INC:
+	case LOCK_AUTO_INC_X:
 		++table->n_waiting_or_granted_auto_inc_locks;
 		/* For AUTOINC locking we reuse the lock instance only if
 		there is no wait involved else we allocate the waiting lock
 		from the transaction lock heap. */
-		if (type_mode == LOCK_AUTO_INC) {
+		if (!(type_mode & LOCK_WAIT)) {
 			lock = table->autoinc_lock;
 
 			ut_ad(!table->autoinc_trx);
@@ -3309,7 +3315,8 @@ lock_table_remove_autoinc_lock(
 	lock_t*	lock,	/*!< in: table lock */
 	trx_t*	trx)	/*!< in/out: transaction that owns the lock */
 {
-	ut_ad(lock->type_mode == (LOCK_AUTO_INC | LOCK_TABLE));
+	ut_ad(lock->type_mode == (LOCK_AUTO_INC | LOCK_TABLE) ||
+              lock->type_mode == (LOCK_AUTO_INC_X | LOCK_TABLE));
 	lock_sys.assert_locked(*lock->un_member.tab_lock.table);
 	ut_ad(trx->mutex_is_owner());
 
@@ -3375,6 +3382,7 @@ lock_table_remove_low(
 	the lock that is being released is an AUTOINC lock. */
 	switch (lock->mode()) {
 	case LOCK_AUTO_INC:
+	case LOCK_AUTO_INC_X:
 		ut_ad((table->autoinc_trx == trx) == !lock->is_waiting());
 
 		if (table->autoinc_trx == trx) {
@@ -4220,6 +4228,7 @@ lock_table_print(FILE* file, const lock_t* lock)
 		fputs(" lock mode IX", file);
 		break;
 	case LOCK_AUTO_INC:
+	case LOCK_AUTO_INC_X:
 		fputs(" lock mode AUTO-INC", file);
 		break;
 	default:
@@ -5675,7 +5684,8 @@ static void lock_release_autoinc_locks(trx_t *trx)
     {
       lock_t *lock= *static_cast<lock_t**>
         (ib_vector_get(autoinc_locks, size - 1));
-      ut_ad(lock->type_mode == (LOCK_AUTO_INC | LOCK_TABLE));
+      ut_ad(lock->type_mode == (LOCK_AUTO_INC | LOCK_TABLE) ||
+            lock->type_mode == (LOCK_AUTO_INC_X | LOCK_TABLE));
       lock_table_dequeue(lock, true);
       lock_trx_table_locks_remove(lock);
     }
@@ -5697,7 +5707,7 @@ static void lock_cancel_waiting_and_release(lock_t *lock)
     lock_rec_dequeue_from_page(lock, true);
   else
   {
-    if (lock->type_mode == (LOCK_AUTO_INC | LOCK_TABLE))
+    if (lock->is_auto_increment())
     {
       ut_ad(trx->autoinc_locks);
       ib_vector_remove(trx->autoinc_locks, lock);

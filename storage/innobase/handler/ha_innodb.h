@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2000, 2017, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2013, 2021, MariaDB Corporation.
+Copyright (c) 2013, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -244,7 +244,6 @@ public:
 		ulonglong		nb_desired_values,
 		ulonglong*		first_value,
 		ulonglong*		nb_reserved_values) override;
-	int reset_auto_increment(ulonglong value) override;
 
 	bool get_error_message(int error, String *buf) override;
 
@@ -465,6 +464,10 @@ protected:
 
 	int general_fetch(uchar* buf, uint direction, uint match_mode);
 	int change_active_index(uint keynr);
+	/* @return true if it's necessary to switch current statement log
+	format from STATEMENT to ROW if binary log format is MIXED and
+	autoincrement values are changed in the statement */
+	bool prefer_binlog_format_row() const override;
 	dict_index_t* innobase_get_index(uint keynr);
 
 #ifdef WITH_WSREP

@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2007, 2014, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2018, 2021, MariaDB Corporation.
+Copyright (c) 2018, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -183,38 +183,6 @@ lock_rec_get_next_on_page_const(
     if (lock->un_member.rec_lock.page_id == page_id)
       break;
   return lock;
-}
-
-/*********************************************************************//**
-Calculates if lock mode 1 is compatible with lock mode 2.
-@return nonzero if mode1 compatible with mode2 */
-UNIV_INLINE
-ulint
-lock_mode_compatible(
-/*=================*/
-	enum lock_mode	mode1,	/*!< in: lock mode */
-	enum lock_mode	mode2)	/*!< in: lock mode */
-{
-	ut_ad((ulint) mode1 < lock_types);
-	ut_ad((ulint) mode2 < lock_types);
-
-	return(lock_compatibility_matrix[mode1][mode2]);
-}
-
-/*********************************************************************//**
-Calculates if lock mode 1 is stronger or equal to lock mode 2.
-@return nonzero if mode1 stronger or equal to mode2 */
-UNIV_INLINE
-ulint
-lock_mode_stronger_or_eq(
-/*=====================*/
-	enum lock_mode	mode1,	/*!< in: lock mode */
-	enum lock_mode	mode2)	/*!< in: lock mode */
-{
-	ut_ad((ulint) mode1 < lock_types);
-	ut_ad((ulint) mode2 < lock_types);
-
-	return(lock_strength_matrix[mode1][mode2]);
 }
 
 /*********************************************************************//**
