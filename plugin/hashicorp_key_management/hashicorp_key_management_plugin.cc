@@ -1,4 +1,4 @@
-/* Copyright (C) 2019-2021 MariaDB Corporation
+/* Copyright (C) 2019-2022 MariaDB Corporation
 
  This program is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -919,6 +919,7 @@ static int hashicorp_key_management_plugin_init(void *p)
   char *token_env= getenv("VAULT_TOKEN");
   size_t token_len = strlen(token);
   local_token = NULL;
+  token_header = NULL;
   if (token_len == 0)
   {
     if (token_env)
